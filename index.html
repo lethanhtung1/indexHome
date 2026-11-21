@@ -478,11 +478,17 @@ async function loadHome(force) {
   secs = SECTIONS.map(s => ({ ...s, mood: s.title, items: null }));
   const fa = favs[0]?.artist;
   if (fa) secs.unshift({ title: `Vì bạn thích ${fa}`, mood: "Dành cho bạn", q: `${fa} hay nhất`, items: null });
+  /* hiện ngay bản đã lưu lần trước, rồi tải bản mới ở nền */
+  let hc = {}; try { hc = JSON.parse(ls("nhac.home") || "{}") || {}; } catch (e) {}
+  secs.forEach(s => { if (hc[s.q]) s.items = hc[s.q].map(t => ({ ...t, mood: s.mood })); });
   renderHome();
   let failed = 0;
   await Promise.all(secs.map(async s => {
-    try { s.items = (await (await fetch(`${API}/search?q=${encodeURIComponent(s.q)}`)).json()).slice(0, 12).map(t => ({ ...t, mood: s.mood })); }
-    catch (e) { s.items = []; failed++; }
+    try {
+      const raw = (await (await fetch(`${API}/search?q=${encodeURIComponent(s.q)}`)).json()).slice(0, 12);
+      if (raw.length) { hc[s.q] = raw; lset("nhac.home", JSON.stringify(hc)); }
+      s.items = raw.length || !s.items ? raw.map(t => ({ ...t, mood: s.mood })) : s.items;
+    } catch (e) { if (!s.items) { s.items = []; failed++; } }
     if (view === "home") renderHome();
   }));
   if (failed === secs.length) { homeLoaded = false; if (view === "home") say("Không kết nối được backend. Hãy chạy server.py trước.", true); }
