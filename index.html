@@ -326,13 +326,57 @@ input[type=range]::-moz-range-thumb{width:0;height:0;border:0}
   </div>
 </section>
 
-<audio id="audio" preload="auto"></audio>
-<audio id="audio2" preload="auto"></audio>
-
 <script>
-const API = "http://localhost:5000";
+const API = "https://nhaccuatung.onrender.com";
 const $ = id => document.getElementById(id);
-const A = [$("audio"), $("audio2")]; let audio = A[0];
+/* ===== Phát bằng YouTube IFrame Player (chạy ngay trên trình duyệt, không qua IP server) =====
+   Lớp YTAudio giả lập giao diện thẻ <audio> nên phần automix, lời bài hát, thanh tua... giữ nguyên */
+let ytReady = false; const ytWait = [];
+window.onYouTubeIframeAPIReady = () => { ytReady = true; ytWait.splice(0).forEach(f => f()); };
+(() => { const sc = document.createElement("script"); sc.src = "https://www.youtube.com/iframe_api"; document.head.appendChild(sc); })();
+class YTAudio {
+  constructor(id) {
+    const box = document.createElement("div"); box.id = id;
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "position:fixed;right:0;bottom:0;width:200px;height:200px;opacity:.01;pointer-events:none;z-index:-1;overflow:hidden";
+    wrap.appendChild(box); document.body.appendChild(wrap);
+    this._src = null; this._vid = null; this._vol = 1; this._want = false; this._ended = false; this._ready = false; this._cmds = []; this.p = null;
+    const init = () => { this.p = new window.YT.Player(id, {
+      width: "200", height: "200",
+      playerVars: { playsinline: 1, controls: 0, disablekb: 1, fs: 0, rel: 0, origin: location.origin },
+      events: {
+        onReady: () => { this._ready = true; this._cmds.splice(0).forEach(f => f()); },
+        onStateChange: e => this._state(e.data),
+        onError: () => { this._want = false; this.onerror && this.onerror(); }
+      } }); };
+    ytReady ? init() : ytWait.push(init);
+    setInterval(() => { if (this._ready && this._want && this._vid) this.ontimeupdate && this.ontimeupdate(); }, 250);
+  }
+  _do(f) { this._ready ? f() : this._cmds.push(f); }
+  _state(st) {
+    if (st === 1) { this._want = true; this._ended = false; this.onplay && this.onplay(); this.onplaying && this.onplaying(); }
+    else if (st === 2) { this._want = false; this.onpause && this.onpause(); }
+    else if (st === 0) { this._want = false; this._ended = true; this.onended && this.onended(); }
+  }
+  set src(v) {
+    const m = /\/stream\/([\w-]+)/.exec(v || ""); this._src = v; this._ended = false; this._want = false; this._vid = m ? m[1] : null;
+    if (this._vid) { const id = this._vid; this._do(() => { if (this._vid === id) this.p.cueVideoById(id); }); }
+  }
+  get src() { return this._src; }
+  getAttribute() { return this._src; }
+  removeAttribute() { this._src = null; this._vid = null; this._want = false; this._do(() => this.p.stopVideo()); }
+  load() {}
+  play() { this._want = true; this._ended = false; this._do(() => { this.p.setVolume(Math.round(this._vol * 100)); this.p.playVideo(); }); return Promise.resolve(); }
+  pause() { this._want = false; this._do(() => this.p.pauseVideo()); }
+  get paused() { return !this._want; }
+  get ended() { return this._ended; }
+  get volume() { return this._vol; }
+  set volume(v) { this._vol = v; this._do(() => this.p.setVolume(Math.round(v * 100))); }
+  get currentTime() { return this._ready && this._vid ? (this.p.getCurrentTime() || 0) : 0; }
+  set currentTime(t) { this._do(() => this.p.seekTo(t, true)); }
+  get duration() { return this._ready && this._vid ? (this.p.getDuration() || 0) : 0; }
+}
+const A = [new YTAudio("yt1"), new YTAudio("yt2")]; let audio = A[0];
 const results = $("results"), msg = $("msg");
 let tracks = [], queue = [], cur = -1, playingId = null, view = "home", shuffle = false, repeat = false, lastQ = "";
 let favs = [];
