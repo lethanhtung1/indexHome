@@ -230,6 +230,18 @@ input[type=range]::-moz-range-thumb{width:0;height:0;border:0}
   .np img{width:46px;height:46px}.btns{gap:14px}.btns .pp{width:40px;height:40px}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+.acct{padding:11px 18px;border-radius:999px;border:1px solid var(--line);background:var(--glass);color:var(--fg);font-weight:600;font-size:14px;white-space:nowrap;backdrop-filter:blur(20px);cursor:pointer}
+.acct:hover{background:var(--hover)}
+.modal{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(10,8,30,.6);backdrop-filter:blur(6px)}
+.modal[hidden]{display:none}
+.modal .box{width:min(380px,92vw);padding:28px;border-radius:24px;border:1px solid var(--line);background:#25205a;display:flex;flex-direction:column;gap:12px}
+.modal h2{margin:0 0 4px;font-size:22px}
+.modal input{padding:13px 16px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.08);color:var(--fg);font:inherit;font-size:15px}
+.modal .go{padding:13px;border-radius:999px;background:#fff;color:#1a1740;font-weight:700;font-size:15px;cursor:pointer}
+.modal .go:disabled{opacity:.6}
+.modal .sw{font-size:13px;color:var(--mute);text-align:center}
+.modal .sw a{color:var(--ac);cursor:pointer}
+.modal .er{min-height:18px;font-size:13px;color:#ff8f8f}
 </style>
 </head>
 <body>
@@ -256,6 +268,7 @@ input[type=range]::-moz-range-thumb{width:0;height:0;border:0}
       <button class="nav" data-view="fav">Yêu thích<span class="n" id="favN">0</span></button>
     </nav>
     <label class="search"><svg viewBox="0 0 24 24"><use href="#i-search"/></svg><input id="q" type="search" placeholder="Bài hát, nghệ sĩ" autocomplete="off"></label>
+    <button class="acct" id="acct" type="button">Đăng nhập</button>
   </header>
 
   <div class="layout">
@@ -326,6 +339,17 @@ input[type=range]::-moz-range-thumb{width:0;height:0;border:0}
   </div>
 </section>
 
+<div class="modal" id="authModal" hidden>
+  <form class="box" id="authForm" autocomplete="on">
+    <h2 id="authTitle">Đăng nhập</h2>
+    <input id="authUser" placeholder="Tên đăng nhập" autocomplete="username" autocapitalize="none" required>
+    <input id="authPass" type="password" placeholder="Mật khẩu" autocomplete="current-password" required>
+    <div class="er" id="authErr"></div>
+    <button class="go" id="authSubmit" type="submit">Đăng nhập</button>
+    <div class="sw"><span id="authSwText">Chưa có tài khoản?</span> <a id="authSw">Đăng ký</a></div>
+  </form>
+</div>
+
 <script>
 const API = "https://nhaccuatung.onrender.com";
 const $ = id => document.getElementById(id);
@@ -382,7 +406,7 @@ const results = $("results"), msg = $("msg");
 let tracks = [], queue = [], cur = -1, playingId = null, view = "home", shuffle = false, repeat = false, lastQ = "";
 let favs = [];
 try { favs = JSON.parse(localStorage.getItem("nhac.favs") || "[]"); } catch (e) {}
-const saveFavs = () => { try { localStorage.setItem("nhac.favs", JSON.stringify(favs)); } catch (e) {} };
+const saveFavs = () => { try { localStorage.setItem("nhac.favs", JSON.stringify(favs)); } catch (e) {} pushFavs(); };
 const isFav = id => favs.some(f => f.id === id);
 
 const MOODS = { "Năng lượng": "#ffb25b", "Thư giãn": "#6fe0b0", "Đêm khuya": "#7fd8ff", "Man mác": "#8fa2ff", "Tập trung": "#ff8fc7", "Dành cho bạn": "#ffa7d6" };
@@ -552,6 +576,65 @@ $("hShuf").onclick = () => {
 /* automix / crossfade: dùng 2 thẻ audio, bài cũ nhỏ dần, bài mới to dần bằng volume */
 const ls = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lset = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+/* ===== Tài khoản: đăng nhập để lưu danh sách yêu thích trên server ===== */
+let auth = null; try { auth = JSON.parse(ls("nhac.auth") || "null"); } catch (e) {}
+let authMode = "login", pushT = null;
+const authHdr = () => ({ "Content-Type": "application/json", Authorization: "Bearer " + auth.token });
+function showAcct() { $("acct").textContent = auth ? "👤 " + auth.username : "Đăng nhập"; }
+function pushFavs() {
+  if (!auth) return;
+  clearTimeout(pushT);
+  pushT = setTimeout(async () => {
+    try {
+      const r = await fetch(API + "/favs", { method: "PUT", headers: authHdr(), body: JSON.stringify({ favs }) });
+      if (r.status === 401) logout(true);
+    } catch (e) {}
+  }, 600);
+}
+async function syncFavs() {
+  try {
+    const r = await fetch(API + "/favs", { headers: authHdr() });
+    if (r.status === 401) return logout(true);
+    const sv = (await r.json()).favs || [];
+    const have = new Set(sv.map(f => f.id));
+    favs = sv.concat(favs.filter(f => !have.has(f.id)));
+    saveFavs(); render(); syncHearts();
+  } catch (e) { say("Chưa đồng bộ được danh sách yêu thích, thử tải lại trang.", true); }
+}
+function logout(expired) {
+  auth = null; lset("nhac.auth", "null"); favs = []; saveFavs(); showAcct(); render(); syncHearts();
+  say(expired ? "Phiên đăng nhập đã hết hạn, hãy đăng nhập lại." : "Đã đăng xuất.", !!expired);
+}
+function openAuth(mode) {
+  authMode = mode; const reg = mode === "register";
+  $("authTitle").textContent = $("authSubmit").textContent = reg ? "Tạo tài khoản" : "Đăng nhập";
+  $("authSwText").textContent = reg ? "Đã có tài khoản?" : "Chưa có tài khoản?";
+  $("authSw").textContent = reg ? "Đăng nhập" : "Đăng ký";
+  $("authPass").autocomplete = reg ? "new-password" : "current-password";
+  $("authErr").textContent = ""; $("authModal").hidden = false; $("authUser").focus();
+}
+const closeAuth = () => { $("authModal").hidden = true; $("authPass").value = ""; };
+$("acct").onclick = () => { if (auth) { if (confirm("Đăng xuất khỏi " + auth.username + "?")) logout(); } else openAuth("login"); };
+$("authSw").onclick = () => openAuth(authMode === "login" ? "register" : "login");
+$("authModal").onclick = e => { if (e.target === $("authModal")) closeAuth(); };
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("authModal").hidden) closeAuth(); }, true);
+$("authForm").onsubmit = async e => {
+  e.preventDefault();
+  $("authErr").textContent = ""; $("authSubmit").disabled = true;
+  try {
+    const r = await fetch(API + "/" + authMode, { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: $("authUser").value, password: $("authPass").value }) });
+    const b = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(b.error || "Có lỗi, thử lại.");
+    auth = { token: b.token, username: b.username }; lset("nhac.auth", JSON.stringify(auth));
+    closeAuth(); showAcct(); say("Xin chào " + auth.username + "!"); await syncFavs();
+  } catch (err) {
+    $("authErr").textContent = err.message === "Failed to fetch" ? "Không kết nối được server (có thể đang khởi động, thử lại sau 30 giây)." : err.message;
+  }
+  $("authSubmit").disabled = false;
+};
+showAcct(); if (auth) syncFavs();
+
 let master = 1, mixOn = ls("nhac.mix") !== "0", mixSec = +ls("nhac.mixSec") || 6;
 let oldEl = null, fade = null, timer = null, pre = null, planned = null, pendingDur = 3;
 const other = () => A[0] === audio ? A[1] : A[0];
