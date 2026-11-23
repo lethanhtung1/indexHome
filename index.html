@@ -414,12 +414,17 @@ class YTAudio {
   getAttribute() { return this._src; }
   removeAttribute() { this._src = null; this._vid = null; this._want = false; this._do(() => this.p.stopVideo()); }
   load() { const id = this._vid; if (id) this._do(() => { if (this._vid === id) this.p.cueVideoById(id); }); }
-  play() { this._want = true; this._ended = false; const id = this._vid; this._do(() => { this.p.setVolume(Math.round(this._vol * 100)); if (!id) this.p.playVideo(); else if (this._cued === id) this.p.playVideo(); else this.p.loadVideoById(id); }); return Promise.resolve(); }
+  _vol_apply() {
+    const v = this._vol;
+    if (v <= 0.001) { if (!this._muted) { this.p.mute(); this._muted = true; } }
+    else { if (this._muted) { this.p.unMute(); this._muted = false; } this.p.setVolume(Math.round(v * 100)); }
+  }
+  play() { this._want = true; this._ended = false; const id = this._vid; this._do(() => { this._vol_apply(); if (!id) this.p.playVideo(); else if (this._cued === id) this.p.playVideo(); else this.p.loadVideoById(id); }); return Promise.resolve(); }
   pause() { this._want = false; this._do(() => this.p.pauseVideo()); }
   get paused() { return !this._want; }
   get ended() { return this._ended; }
   get volume() { return this._vol; }
-  set volume(v) { this._vol = v; this._do(() => this.p.setVolume(Math.round(v * 100))); }
+  set volume(v) { this._vol = v; this._do(() => this._vol_apply()); }
   get currentTime() { return this._ready && this._vid ? (this.p.getCurrentTime() || 0) : 0; }
   set currentTime(t) { this._do(() => this.p.seekTo(t, true)); }
   get duration() { return this._ready && this._vid ? (this.p.getDuration() || 0) : 0; }
@@ -794,8 +799,25 @@ function preload() {
   const t = queue[pickNext()], el = other();
   el.src = `${API}/stream/${t.id}`; el.volume = 0; el.load(); pre = { id: t.id };
 }
-let mixBroken = false;
+let mixBroken = false, dipNext = false, dipOut = false;
+/* chế độ dự phòng "mờ dần rồi vào bài sau" trên CÙNG một trình phát (dùng khi trình duyệt không cho 2 trình phát chồng nhau) */
+function dipIn(el, secs) {
+  let t0 = 0; const iv = setInterval(() => {
+    if (el !== audio) return clearInterval(iv);
+    if (!el.started) return;
+    if (!t0) t0 = Date.now();
+    const p = Math.min(1, (Date.now() - t0) / (secs * 1000));
+    el.volume = master * p; if (p >= 1) clearInterval(iv);
+  }, 100);
+  setTimeout(() => clearInterval(iv), 20000);
+}
 function automixCheck(d) {
+  if (mixBroken && mixOn && !repeat && queue.length >= 2 && d > 20 && !fade && !oldEl) {
+    const half = Math.min(mixSec, 6), rem = d - audio.currentTime;
+    if (rem <= half && !audio.paused) { dipOut = true; dipNext = true; audio.volume = master * Math.max(0, rem / half); }
+    else if (dipOut) { dipOut = false; dipNext = false; audio.volume = master; }
+    return;
+  }
   if (mixBroken || !mixOn || repeat || fade || oldEl || queue.length < 2 || !(d > mixSec * 2 + 10)) return;
   const rem = d - audio.currentTime;
   if (rem <= mixSec + 25 && !pre) preload();
@@ -827,13 +849,16 @@ function play(i, from, auto) {
   if (!(mixing && pre && pre.id === t.id)) audio.src = `${API}/stream/${t.id}`;
   pre = null; planned = null;
   pendingDur = auto ? mixSec : Math.min(mixSec, 2.5);
-  audio.volume = mixing ? 0 : master;
+  const dip = dipNext && mixBroken && mixOn && !mixing; dipNext = false; dipOut = false;
+  audio.volume = (mixing || dip) ? 0 : master;
   audio.play().catch(() => {});
+  if (dip) dipIn(audio, Math.min(mixSec, 6));
   if (mixing) { const nw = audio, id = t.id; setTimeout(() => {
     if (audio !== nw || nw.started || !oldEl || playingId !== id) return;
     mixBroken = true; const good = oldEl; oldEl = null; clearInterval(timer); fade = null;
-    nw.removeAttribute("src"); audio = good; audio.volume = master; audio.src = `${API}/stream/${id}`; audio.play();
-    say("Trình duyệt chặn Automix, chuyển sang chuyển bài thường.");
+    nw.removeAttribute("src"); audio = good; audio.volume = 0; audio.src = `${API}/stream/${id}`; audio.play(); dipIn(audio, Math.min(mixSec, 4));
+    console.warn("[automix] trình phát thứ hai không tự phát được (trạng thái " + (nw.p && nw.p.getPlayerState ? nw.p.getPlayerState() : "?") + "), chuyển sang chế độ mờ dần rồi vào bài sau");
+    say("Trình duyệt không cho 2 bài chồng nhau, Automix chuyển sang mờ dần rồi vào bài sau.");
   }, 2500); }
   $("barArt").src = art(t.id, "mqdefault"); $("big").src = art(t.id);
   $("fullBg").style.backgroundImage = `url(${art(t.id, "mqdefault")})`;
