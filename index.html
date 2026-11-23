@@ -293,7 +293,7 @@ input[type=range]::-moz-range-thumb{width:0;height:0;border:0}
     <aside class="side">
       <section class="panel card2" id="npCard"></section>
       <section class="panel lyr-card"><div class="lyr" id="lyr"></div>
-        <div class="lyoff" id="lyoff" title="Lời chạy nhanh hơn nhạc thì bấm Muộn; chạy chậm hơn nhạc thì bấm Sớm"><button id="lyMM" aria-label="Sớm 5 giây">«</button><button id="lyM" aria-label="Lời hiện sớm hơn">◀ Sớm</button><output id="lyV">khớp</output><button id="lyP" aria-label="Lời hiện muộn hơn">Muộn ▶</button><button id="lyPP" aria-label="Muộn 5 giây">»</button><button id="lyR" aria-label="Tự canh lại" title="Tự canh lại">↺</button></div></section>
+        <div class="lyoff" id="lyoff" title="Lời chạy nhanh hơn nhạc thì bấm Muộn; chạy chậm hơn nhạc thì bấm Sớm"><button id="lyMM" aria-label="Sớm 5 giây">«</button><button id="lyM" aria-label="Lời hiện sớm hơn">◀ Sớm</button><output id="lyV">khớp</output><button id="lyP" aria-label="Lời hiện muộn hơn">Muộn ▶</button><button id="lyPP" aria-label="Muộn 5 giây">»</button><button id="lyR" aria-label="Tự canh lại" title="Tự canh lại">↺</button><button id="lyAlt" aria-label="Đổi bản lời" title="Đổi sang bản lời khác" style="display:none">⇄ Bản khác</button></div></section>
     </aside>
   </div>
 </div>
@@ -718,9 +718,9 @@ function play(i, from, auto) {
 }
 
 /* lời bài hát (lấy qua backend) */
-let lyrics = [], lyIdx = -1, lyPlain = false, lyOff = 0, lyTouched = false;
+let lyrics = [], lyIdx = -1, lyPlain = false, lyOff = 0, lyTouched = false, lyList = [], lyAltI = 0;
 const lyr = $("lyr");
-const lyMsg = t => { lyrics = []; lyIdx = -1; $("lyoff").classList.remove("show"); lyr.className = "lyr"; lyr.innerHTML = `<p class="hint">${t}</p>`; };
+const lyMsg = t => { lyrics = []; lyList = []; $("lyAlt").style.display = "none"; lyIdx = -1; $("lyoff").classList.remove("show"); lyr.className = "lyr"; lyr.innerHTML = `<p class="hint">${t}</p>`; };
 const parseLrc = txt => txt.split("\n").flatMap(l => {
   const s = l.replace(/\[[^\]]*\]/g, "").trim();
   return [...l.matchAll(/\[(\d+):(\d+(?:\.\d+)?)\]/g)].map(m => ({ t: +m[1] * 60 + +m[2], s }));
@@ -728,12 +728,17 @@ const parseLrc = txt => txt.split("\n").flatMap(l => {
 async function loadLyrics(t) {
   const id = t.id;
   try {
-    const r = await fetch(`${API}/lyrics/${id}`);
+    const r = await fetch(`${API}/lyrics/${id}?t=${encodeURIComponent(t.title || "")}&a=${encodeURIComponent(t.artist || "")}&d=${t.duration || ""}`);
     if (playingId !== id) return;
     if (r.status === 404) return lyMsg("Backend đang chạy bản cũ, chưa có /lyrics. Hãy tắt rồi chạy lại server.py mới.");
     const b = await r.json();
     if (playingId !== id) return;
-    if (b.syncedLyrics || b.plainLyrics) showLyrics(b); else lyMsg("Chưa tìm thấy lời cho bài này.");
+    if (b.syncedLyrics || b.plainLyrics) {
+      const { alts, ...main } = b;
+      lyList = [main, ...(alts || [])];
+      lyAltI = Math.min(Math.max(parseInt(ls("nhac.la." + id)) || 0, 0), lyList.length - 1);
+      showLyrics(lyList[lyAltI]); showAlt();
+    } else lyMsg("Chưa tìm thấy lời cho bài này.");
   } catch (e) { if (playingId === id) lyMsg("Không tải được lời bài hát."); }
 }
 function showLyrics(b) {
@@ -767,6 +772,18 @@ async function autoOffset(id) {
     lyOff = b.offset; lset("nhac.lo." + id, lyOff); showOff(); lyIdx = -2; syncLyrics();
   } catch (e) {}
 }
+function showAlt() {
+  const b = $("lyAlt"), n = lyList.length, x = lyList[lyAltI] || {};
+  b.style.display = n > 1 ? "" : "none";
+  b.textContent = `⇄ Bản ${lyAltI + 1}/${n}`;
+  b.title = `${x.trackName || ""} ${x.artistName ? "– " + x.artistName : ""} (${x.lrcDuration ? Math.floor(x.lrcDuration / 60) + ":" + String(Math.round(x.lrcDuration % 60)).padStart(2, "0") : "?"}). Bấm để đổi sang bản lời khác.`;
+}
+$("lyAlt").onclick = () => {
+  if (lyList.length < 2) return;
+  lyAltI = (lyAltI + 1) % lyList.length; lset("nhac.la." + playingId, lyAltI);
+  try { localStorage.removeItem("nhac.lo." + playingId); } catch (e) {}
+  showLyrics(lyList[lyAltI]); showAlt();
+};
 /* chỉnh lệch lời: + = lời hiện muộn hơn, − = lời hiện sớm hơn; nhớ riêng cho từng bài */
 function showOff() {
   $("lyoff").classList.toggle("show", !lyPlain && lyrics.length > 0);
