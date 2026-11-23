@@ -87,7 +87,7 @@ html,body,*{scrollbar-width:none!important;-ms-overflow-style:none!important}
 #msg.err{color:#ff8fa8}
 
 ul{list-style:none;padding:0}
-li.row{display:grid;grid-template-columns:28px 46px 1fr auto 38px 44px;gap:14px;align-items:center;padding:9px 14px;border-radius:18px;cursor:pointer}
+li.row{display:grid;grid-template-columns:28px 46px 1fr auto 38px 38px 44px;gap:14px;align-items:center;padding:9px 14px;border-radius:18px;cursor:pointer}
 li.row:hover{background:var(--hover)}
 li.row.on{background:rgba(255,255,255,.12)}
 .idx{text-align:center;color:var(--mute);font-variant-numeric:tabular-nums}
@@ -223,7 +223,7 @@ input[type=range]::-moz-range-thumb{width:0;height:0;border:0}
 @media (max-width:640px){
   .layout{padding:0 12px 100px}main.panel{padding:20px 16px;border-radius:26px}
   .hero{flex-direction:column;align-items:flex-start;gap:16px}.hero .cover{width:120px;height:120px}
-  li.row{grid-template-columns:24px 46px 1fr 38px}.row .mood,.row .dur{display:none}
+  li.row{grid-template-columns:24px 46px 1fr 38px 38px}.row .mood,.row .dur{display:none}
   .shelf{grid-auto-columns:138px;gap:12px}
   .bar{left:12px;right:12px;bottom:12px;grid-template-columns:1fr auto;height:70px;padding:0 12px;border-radius:24px}
   .bar .ctr .prog,.bar .vol,.bar .btns .sm,.bar .btns .prv{display:none}
@@ -242,6 +242,28 @@ input[type=range]::-moz-range-thumb{width:0;height:0;border:0}
 .modal .sw{font-size:13px;color:var(--mute);text-align:center}
 .modal .sw a{color:var(--ac);cursor:pointer}
 .modal .er{min-height:18px;font-size:13px;color:#ff8f8f}
+.addpl{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;color:var(--mute);flex:none;font-size:22px;line-height:1;cursor:pointer}
+.addpl:hover{color:var(--fg);background:var(--hover)}
+li.row .addpl{opacity:0}
+li.row:hover .addpl,li.row:focus-within .addpl{opacity:1}
+@media (hover:none){li.row .addpl{opacity:1}}
+.plbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 18px}
+.chip{padding:9px 16px;border-radius:999px;border:1px solid var(--line);background:var(--glass);color:var(--fg);font-weight:600;font-size:14px;cursor:pointer;white-space:nowrap}
+.chip small{margin-left:6px;opacity:.65;font-weight:500}
+.chip:hover{background:var(--hover)}
+.chip.on{background:#fff;color:#1a1740;border-color:#fff}
+.chip.add{border-style:dashed;color:var(--mute)}
+.plact{margin-left:auto;display:flex;gap:6px}
+.plact button{padding:8px 12px;border-radius:999px;color:var(--mute);font-size:13px;cursor:pointer}
+.plact button:hover{color:var(--fg);background:var(--hover)}
+.plmenu{position:fixed;z-index:60;width:250px;max-height:60vh;overflow:auto;padding:8px;border-radius:18px;border:1px solid var(--line);background:#25205a;box-shadow:0 18px 40px rgba(0,0,0,.5)}
+.plmenu .plh{padding:8px 10px;font-size:12px;color:var(--mute);font-weight:600}
+.pli{display:flex;align-items:center;gap:8px;width:100%;padding:10px;border-radius:12px;color:var(--fg);font-size:14px;text-align:left;cursor:pointer}
+.pli:hover{background:var(--hover)}
+.pli .ck{width:16px;color:var(--ac);font-weight:700}
+.pli .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pli small{opacity:.6}
+.pli.new{color:var(--ac)}
 </style>
 </head>
 <body>
@@ -265,7 +287,7 @@ input[type=range]::-moz-range-thumb{width:0;height:0;border:0}
     <nav class="tabs">
       <button class="nav on" data-view="home">Trang chủ</button>
       <button class="nav" data-view="search">Tìm kiếm</button>
-      <button class="nav" data-view="fav">Yêu thích<span class="n" id="favN">0</span></button>
+      <button class="nav" data-view="fav">Danh sách<span class="n" id="favN">0</span></button>
     </nav>
     <label class="search"><svg viewBox="0 0 24 24"><use href="#i-search"/></svg><input id="q" type="search" placeholder="Bài hát, nghệ sĩ" autocomplete="off"></label>
     <button class="acct" id="acct" type="button">Đăng nhập</button>
@@ -305,6 +327,7 @@ input[type=range]::-moz-range-thumb{width:0;height:0;border:0}
       <div style="min-width:0"><div class="t" id="barT">Chưa phát bài nào</div><div class="a" id="barA"></div></div>
     </button>
     <button class="heart" id="barHeart" aria-label="Yêu thích"><svg><use href="#i-heart"/></svg></button>
+    <button class="addpl show" id="barAdd" aria-label="Thêm vào danh sách" title="Thêm vào danh sách">＋</button>
   </div>
   <div class="ctr">
     <div class="btns">
@@ -404,10 +427,52 @@ class YTAudio {
 const A = [new YTAudio("yt1"), new YTAudio("yt2")]; let audio = A[0];
 const results = $("results"), msg = $("msg");
 let tracks = [], queue = [], cur = -1, playingId = null, view = "home", shuffle = false, repeat = false, lastQ = "";
-let favs = [];
-try { favs = JSON.parse(localStorage.getItem("nhac.favs") || "[]"); } catch (e) {}
-const saveFavs = () => { try { localStorage.setItem("nhac.favs", JSON.stringify(favs)); } catch (e) {} pushFavs(); };
-const isFav = id => favs.some(f => f.id === id);
+/* ===== Nhiều danh sách phát. lists[0] (id "fav") là danh sách trái tim "Yêu thích" ===== */
+const newList = (id, name, items) => ({ id, name, items: items || [] });
+const trackLite = t => ({ id: t.id, title: t.title, artist: t.artist || "", mood: t.mood, duration: t.duration });
+function normLists(arr) {
+  const out = [], seen = new Set();
+  for (const L of Array.isArray(arr) ? arr : []) {
+    if (!L || typeof L.id !== "string" || seen.has(L.id)) continue;
+    seen.add(L.id);
+    out.push(newList(L.id, String(L.name || "Danh sách").slice(0, 60), Array.isArray(L.items) ? L.items.filter(t => t && t.id) : []));
+  }
+  if (!seen.has("fav")) out.unshift(newList("fav", "Yêu thích"));
+  out.sort((a, b) => (b.id === "fav") - (a.id === "fav"));
+  return out;
+}
+function mergeLists(server, local) {
+  const res = normLists(JSON.parse(JSON.stringify(server)));
+  for (const L of normLists(local)) {
+    const S = res.find(x => x.id === L.id);
+    if (S) { const have = new Set(S.items.map(t => t.id)); L.items.forEach(t => { if (!have.has(t.id)) S.items.push(t); }); }
+    else if (L.items.length) res.push(L);
+  }
+  return res;
+}
+let lists = [];
+try { lists = JSON.parse(localStorage.getItem("nhac.lists") || "null") || []; } catch (e) {}
+if (!lists.length) { /* chuyển từ bản cũ chỉ có 1 danh sách (cũ lưu bài mới nhất ở đầu) */
+  let old = []; try { old = JSON.parse(localStorage.getItem("nhac.favs") || "[]"); } catch (e) {}
+  lists = [newList("fav", "Yêu thích", old.slice().reverse())];
+}
+lists = normLists(lists);
+let curListId = "fav", queueSrc = null;
+const curList = () => lists.find(l => l.id === curListId) || lists[0];
+const inList = (L, id) => !!L && L.items.some(t => t.id === id);
+const isFav = id => inList(lists[0], id);
+const saveFavs = () => { try { localStorage.setItem("nhac.lists", JSON.stringify(lists)); } catch (e) {} pushFavs(); };
+/* hàng đợi bám theo danh sách đang phát: thêm/xóa bài thì hàng đợi cập nhật theo, bài thêm vào cuối sẽ được phát tiếp */
+function syncQueue() {
+  if (!queueSrc) return;
+  const L = lists.find(l => l.id === queueSrc);
+  if (!L) { queueSrc = null; return; }
+  const curT = queue[cur], prev = cur, q = L.items.slice();
+  let ci = curT ? q.findIndex(t => t.id === curT.id) : -1;
+  if (curT && ci < 0) { ci = Math.min(Math.max(prev, 0), q.length); q.splice(ci, 0, curT); } /* bài đang nghe vừa bị xóa khỏi danh sách: cứ để nghe nốt */
+  queue = q; cur = ci < 0 ? 0 : ci; planned = null; pre = null;
+  renderRail();
+}
 
 const MOODS = { "Năng lượng": "#ffb25b", "Thư giãn": "#6fe0b0", "Đêm khuya": "#7fd8ff", "Man mác": "#8fa2ff", "Tập trung": "#ff8fc7", "Dành cho bạn": "#ffa7d6" };
 const SECTIONS = [
@@ -423,12 +488,48 @@ const esc = s => (s||"").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&
 const say = (t, err) => { msg.textContent = t; msg.className = err ? "err" : ""; };
 const fill = el => el.style.setProperty("--p", (el.value / (el.max || 1)) * 100 + "%");
 let secs = [], homeLoaded = false;
-const list = () => view === "fav" ? favs : view === "home" ? secs.flatMap(s => s.items || []) : tracks;
+const list = () => view === "fav" ? curList().items : view === "home" ? secs.flatMap(s => s.items || []) : tracks;
 const heartSvg = `<svg><use href="#i-heart"/></svg>`;
 const moodPill = n => n ? `<span class="mood" style="--c:${MOODS[n] || "#fff"}">${esc(n)}</span>` : `<span></span>`;
 
+function renderPlBar() {
+  let bar = $("plBar");
+  if (!bar) { bar = document.createElement("div"); bar.id = "plBar"; bar.className = "plbar"; $("hero").before(bar); bar.addEventListener("click", plBarClick); }
+  bar.style.display = view === "fav" ? "" : "none";
+  if (view !== "fav") return;
+  const cl = curList();
+  bar.innerHTML = lists.map(L => `<button class="chip${L.id === cl.id ? " on" : ""}" data-l="${esc(L.id)}">${esc(L.name)}<small>${L.items.length}</small></button>`).join("")
+    + `<button class="chip add" data-new="1">＋ Tạo mới</button>`
+    + (cl.id !== "fav" ? `<span class="plact"><button data-ren="1">Đổi tên</button><button data-del="1">Xóa</button></span>` : "");
+}
+function createList(name, firstTrack) {
+  name = (name || "").trim().slice(0, 60);
+  if (!name) return null;
+  if (lists.length >= 30) { say("Tối đa 30 danh sách.", true); return null; }
+  const L = newList("l" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), name);
+  if (firstTrack) L.items.push(trackLite(firstTrack));
+  lists.push(L); saveFavs();
+  return L;
+}
+function plBarClick(e) {
+  const c = e.target.closest("[data-l]");
+  if (c) { curListId = c.dataset.l; return render(); }
+  if (e.target.closest("[data-new]")) { const L = createList(prompt("Tên danh sách mới:")); if (L) { curListId = L.id; render(); } return; }
+  const L = curList();
+  if (e.target.closest("[data-ren]")) {
+    const n = (prompt("Đổi tên danh sách:", L.name) || "").trim().slice(0, 60);
+    if (n) { L.name = n; saveFavs(); render(); }
+  } else if (e.target.closest("[data-del]")) {
+    if (L.id !== "fav" && confirm(`Xóa danh sách "${L.name}"? Các bài trong đó không bị xóa khỏi nơi khác.`)) {
+      lists = lists.filter(x => x.id !== L.id); curListId = "fav"; if (queueSrc === L.id) queueSrc = null;
+      saveFavs(); render(); syncHearts();
+    }
+  }
+}
+
 function render() {
-  $("favN").textContent = favs.length;
+  renderPlBar();
+  $("favN").textContent = lists.length;
   const l = list();
   const hero = view === "fav" || (view === "search" && l.length);
   $("hero").classList.toggle("show", !!hero);
@@ -436,8 +537,8 @@ function render() {
     const f = view === "fav";
     $("hCover").className = "cover" + (f ? " fav" : "");
     $("hCover").innerHTML = f ? heartSvg : `<img src="${art(l[0].id)}" alt="">`;
-    $("hTag").textContent = f ? "Playlist của bạn" : "Kết quả tìm kiếm";
-    $("hTitle").textContent = f ? "Yêu thích" : lastQ;
+    $("hTag").textContent = f ? "Danh sách của bạn" : "Kết quả tìm kiếm";
+    $("hTitle").textContent = f ? curList().name : lastQ;
     const sec = l.reduce((a, t) => a + (t.duration || 0), 0);
     $("favInfo").textContent = `${l.length} bài hát` + (sec ? ` · ${Math.round(sec / 60)} phút` : "");
     $("hPlay").style.visibility = $("hShuf").style.visibility = l.length ? "" : "hidden";
@@ -449,11 +550,12 @@ function render() {
       <img class="art" loading="lazy" src="${art(t.id, "mqdefault")}" alt="">
       <div style="min-width:0"><div class="t">${esc(t.title)}</div><div class="a">${esc(t.artist)}</div></div>
       ${moodPill(t.mood)}
-      <button class="heart${isFav(t.id) ? " on" : ""}" data-fav="${i}" aria-label="Yêu thích">${heartSvg}</button>
+      <button class="heart${(view === "fav" ? inList(curList(), t.id) : isFav(t.id)) ? " on" : ""}" data-fav="${i}" aria-label="${view === "fav" ? "Bỏ khỏi danh sách" : "Yêu thích"}">${heartSvg}</button>
+      <button class="addpl" data-add="${i}" aria-label="Thêm vào danh sách" title="Thêm vào danh sách">＋</button>
       <span class="dur">${t.duration ? fmt(t.duration) : ""}</span>
     </li>`).join("") ||
     (view === "fav"
-      ? `<li class="empty"><b>Chưa có bài yêu thích</b>Nhấn biểu tượng trái tim cạnh bài hát để lưu vào đây.</li>`
+      ? `<li class="empty"><b>Danh sách trống</b>Nhấn ＋ (hoặc trái tim) cạnh bài hát để thêm vào đây.</li>`
       : `<li class="empty"><b>${tracks.searched ? "Không có kết quả" : "Tìm bài hát bạn thích"}</b>${tracks.searched ? "Thử từ khóa khác." : "Gõ tên bài hoặc nghệ sĩ rồi nhấn Enter."}</li>`);
 }
 
@@ -500,7 +602,7 @@ async function loadHome(force) {
   if (homeLoaded && !force) return renderHome();
   homeLoaded = true;
   secs = SECTIONS.map(s => ({ ...s, mood: s.title, items: null }));
-  const fa = favs[0]?.artist;
+  const fa = lists[0].items.slice(-1)[0]?.artist;
   if (fa) secs.unshift({ title: `Vì bạn thích ${fa}`, mood: "Dành cho bạn", q: `${fa} hay nhất`, items: null });
   /* hiện ngay bản đã lưu lần trước, rồi tải bản mới ở nền */
   let hc = {}; try { hc = JSON.parse(ls("nhac.home") || "{}") || {}; } catch (e) {}
@@ -541,17 +643,45 @@ $("home").addEventListener("click", e => {
   if (c) play(+c.dataset.i, secs[+c.dataset.s].items);
 });
 
-function toggleFav(t) {
-  if (!t) return;
-  if (isFav(t.id)) favs = favs.filter(f => f.id !== t.id);
-  else favs.unshift({ id: t.id, title: t.title, artist: t.artist || "", mood: t.mood, duration: t.duration });
-  saveFavs();
+/* thêm vào CUỐI danh sách (hoặc bỏ ra nếu đã có) */
+function toggleIn(L, t) {
+  if (!t || !L) return;
+  const k = L.items.findIndex(x => x.id === t.id);
+  if (k >= 0) L.items.splice(k, 1); else L.items.push(trackLite(t));
+  saveFavs(); syncQueue();
   if (view === "fav") render(); else {
-    $("favN").textContent = favs.length;
+    $("favN").textContent = lists.length;
     document.querySelectorAll(`.row[data-id="${t.id}"] .heart`).forEach(h => h.classList.toggle("on", isFav(t.id)));
   }
   syncHearts();
+  if ($("plMenu")) fillPlMenu();
 }
+const toggleFav = t => toggleIn(lists[0], t);
+/* menu "Thêm vào danh sách" */
+let plMenuTrack = null;
+function fillPlMenu() {
+  const m = $("plMenu"), t = plMenuTrack; if (!m || !t) return;
+  m.innerHTML = `<div class="plh">Thêm vào danh sách</div>` + lists.map(L =>
+    `<button class="pli${inList(L, t.id) ? " on" : ""}" data-l="${esc(L.id)}"><span class="ck">${inList(L, t.id) ? "✓" : ""}</span><span class="nm">${esc(L.name)}</span><small>${L.items.length}</small></button>`).join("")
+    + `<button class="pli new" data-new="1">＋ Danh sách mới…</button>`;
+}
+function closePlMenu() { $("plMenu")?.remove(); plMenuTrack = null; }
+function openPlMenu(anchor, t) {
+  if (!t) return;
+  closePlMenu(); plMenuTrack = t;
+  const m = document.createElement("div"); m.id = "plMenu"; m.className = "plmenu"; document.body.appendChild(m);
+  fillPlMenu();
+  const r = anchor.getBoundingClientRect();
+  m.style.top = Math.max(8, Math.min(r.bottom + 6, innerHeight - m.offsetHeight - 10)) + "px";
+  m.style.left = Math.max(8, Math.min(r.right - m.offsetWidth, innerWidth - m.offsetWidth - 10)) + "px";
+  m.onclick = e => {
+    const n = e.target.closest("[data-new]"), b = e.target.closest("[data-l]");
+    if (n) { const L = createList(prompt("Tên danh sách mới:"), plMenuTrack); if (L) { syncQueue(); if (view === "fav") render(); fillPlMenu(); } }
+    else if (b) toggleIn(lists.find(x => x.id === b.dataset.l), plMenuTrack);
+  };
+}
+document.addEventListener("click", e => { if (!e.target.closest("#plMenu, [data-add], #barAdd")) closePlMenu(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") closePlMenu(); });
 function syncHearts() {
   const on = playingId && isFav(playingId);
   ["barHeart", "fHeart"].forEach(id => $(id).classList.toggle("on", !!on));
@@ -560,12 +690,15 @@ function syncHearts() {
 
 results.addEventListener("click", e => {
   const h = e.target.closest("[data-fav]");
-  if (h) return toggleFav(list()[+h.dataset.fav]);
+  if (h) return toggleIn(view === "fav" ? curList() : lists[0], list()[+h.dataset.fav]);
+  const a = e.target.closest("[data-add]");
+  if (a) return openPlMenu(a, list()[+a.dataset.add]);
   const r = e.target.closest(".row"); if (r) play(+r.dataset.i, list());
 });
 results.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.classList.contains("row")) e.target.click(); });
 $("q").addEventListener("keydown", e => e.key === "Enter" && search());
 ["barHeart", "fHeart"].forEach(id => $(id).onclick = () => toggleFav(queue[cur]));
+$("barAdd").onclick = e => openPlMenu(e.currentTarget, queue[cur]);
 $("hPlay").onclick = () => list().length && play(0, list());
 $("hShuf").onclick = () => {
   const l = list(); if (!l.length) return;
@@ -586,23 +719,24 @@ function pushFavs() {
   clearTimeout(pushT);
   pushT = setTimeout(async () => {
     try {
-      const r = await fetch(API + "/favs", { method: "PUT", headers: authHdr(), body: JSON.stringify({ favs }) });
+      const r = await fetch(API + "/favs", { method: "PUT", headers: authHdr(), body: JSON.stringify({ lists }) });
       if (r.status === 401) logout(true);
     } catch (e) {}
   }, 600);
 }
-async function syncFavs() {
+async function syncFavs(mergeGuest) {
   try {
     const r = await fetch(API + "/favs", { headers: authHdr() });
     if (r.status === 401) return logout(true);
-    const sv = (await r.json()).favs || [];
-    const have = new Set(sv.map(f => f.id));
-    favs = sv.concat(favs.filter(f => !have.has(f.id)));
-    saveFavs(); render(); syncHearts();
-  } catch (e) { say("Chưa đồng bộ được danh sách yêu thích, thử tải lại trang.", true); }
+    const sv = (await r.json()).lists || [];
+    /* vừa đăng nhập: gộp danh sách khách vào tài khoản; mở lại trang: server là bản chuẩn (để xóa danh sách ở máy này cũng mất ở máy khác) */
+    if (mergeGuest) lists = mergeLists(sv, lists); else if (sv.length) lists = normLists(sv);
+    if (!lists.some(l => l.id === curListId)) curListId = "fav";
+    saveFavs(); syncQueue(); render(); syncHearts();
+  } catch (e) { say("Chưa đồng bộ được danh sách, thử tải lại trang.", true); }
 }
 function logout(expired) {
-  auth = null; lset("nhac.auth", "null"); favs = []; saveFavs(); showAcct(); render(); syncHearts();
+  auth = null; lset("nhac.auth", "null"); lists = normLists([]); curListId = "fav"; queueSrc = null; saveFavs(); showAcct(); render(); syncHearts();
   say(expired ? "Phiên đăng nhập đã hết hạn, hãy đăng nhập lại." : "Đã đăng xuất.", !!expired);
 }
 function openAuth(mode) {
@@ -627,7 +761,7 @@ $("authForm").onsubmit = async e => {
     const b = await r.json().catch(() => ({}));
     if (!r.ok) throw new Error(b.error || "Có lỗi, thử lại.");
     auth = { token: b.token, username: b.username }; lset("nhac.auth", JSON.stringify(auth));
-    closeAuth(); showAcct(); say("Xin chào " + auth.username + "!"); await syncFavs();
+    closeAuth(); showAcct(); say("Xin chào " + auth.username + "!"); await syncFavs(true);
   } catch (err) {
     $("authErr").textContent = err.message === "Failed to fetch" ? "Không kết nối được server (có thể đang khởi động, thử lại sau 30 giây)." : err.message;
   }
@@ -683,7 +817,7 @@ function renderRail() {
 }
 $("rail").addEventListener("click", e => { const b = e.target.closest(".rl"); if (b) play(+b.dataset.i); });
 function play(i, from, auto) {
-  if (from) queue = from.slice();
+  if (from) { queue = from.slice(); queueSrc = (view === "fav" && from === curList().items) ? curList().id : null; }
   if (!queue.length) return;
   cur = (i + queue.length) % queue.length;
   const t = queue[cur]; playingId = t.id;
