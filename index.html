@@ -488,7 +488,7 @@ async function search() {
   if (view !== "search") setView("search");
   say("Đang tìm...");
   try {
-    tracks = await (await fetch(`${API}/search?q=${encodeURIComponent(q)}`)).json();
+    tracks = await (await fetch(`${API}/search?q=${encodeURIComponent(q)}&n=40`)).json();
     tracks.searched = true;
     render(); say("");
   } catch (e) {
